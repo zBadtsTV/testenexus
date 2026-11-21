@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { PLAYER_FRAME_HEIGHT, PLAYER_FRAME_WIDTH } from '../playerSheet';
 import { Player, PLAYER_TEXTURE } from '../entities/Player';
 
