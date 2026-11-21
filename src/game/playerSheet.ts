@@ -1,6 +1,6 @@
 // GERADO por tools/slice_sprites.py - não edite à mão.
-export const PLAYER_FRAME_WIDTH = 180;
-export const PLAYER_FRAME_HEIGHT = 176;
+export const PLAYER_FRAME_WIDTH = 246;
+export const PLAYER_FRAME_HEIGHT = 232;
 
 /** Índices de frame dentro de public/assets/player.png (grade 5 colunas). */
 export const PLAYER_FRAMES = {
