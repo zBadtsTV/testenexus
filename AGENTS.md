@@ -28,3 +28,4 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+- Phaser game code lives in src/game and is loaded via dynamic import in useEffect; Phaser touches window so it must never run during SSR.
