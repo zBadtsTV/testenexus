@@ -41,7 +41,7 @@ export class GameScene extends Phaser.Scene {
       .setShadow(1, 1, '#000000', 2);
   }
 
-  update(): void {
+  override update(): void {
     this.player.update();
   }
 }

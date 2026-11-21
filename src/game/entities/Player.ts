@@ -80,7 +80,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     };
   }
 
-  update(): void {
+  override update(): void {
     const body = this.body as Phaser.Physics.Arcade.Body;
     const onGround = body.blocked.down || body.touching.down;
 
