@@ -1,6 +1,5 @@
 import * as Phaser from 'phaser';
-import { FORM_SHEETS } from '../formSheets';
-import { KI_FEET_Y, KI_FRAMES, KI_FRAME_HEIGHT, KI_FRAME_WIDTH } from '../kiSheet';
+import { FORM_SHEETS } from '../sheets';
 import {
   AIR_FRAMES,
   FORM_IDS,
@@ -14,9 +13,6 @@ import {
   shotSize,
   type FormId,
 } from '../forms';
-
-/** Só a animação de "começar a carregar ki" da forma normal vem desta planilha (a antiga). */
-export const KI_TEXTURE = 'ki';
 
 export const SCALE = 0.55;
 const WALK_SPEED = 150;
@@ -33,8 +29,8 @@ const REVERT_FPS = 10; // 4 frames -> ~0,4s
 const LAND_MS = 140; // quanto tempo mostra o frame de aterrissagem
 
 // Tiro: frames de cada animação (índices dentro das linhas "small"/"big" da planilha de tiro).
-const SHOT_FPS = 14;
-const FIRE_AT = 5; // frame (da linha small/big) em que a bola sai da mão
+const SHOT_FPS = 12;
+const FIRE_AT = 1; // frame da linha small em que a bola sai da mão
 
 // Caixa de colisão em pixels do FRAME (o Phaser aplica a escala sozinho).
 const BODY_W = 55;
@@ -44,9 +40,7 @@ type Facing = -1 | 1;
 type ShotState = 'idle' | 'charging' | 'releasing';
 
 /** Tamanho da célula, pés e centro de cada textura (para reancorar o sprite a cada frame). */
-const ANCHORS: Record<string, { w: number; h: number; feetY: number; ax: number }> = {
-  [KI_TEXTURE]: { w: KI_FRAME_WIDTH, h: KI_FRAME_HEIGHT, feetY: KI_FEET_Y, ax: KI_FRAME_WIDTH / 2 },
-};
+const ANCHORS: Record<string, { w: number; h: number; feetY: number; ax: number }> = {};
 for (const id of FORM_IDS) {
   const { body, aura, shot } = FORM_SHEETS[id];
   for (const s of [body, aura, shot]) {
@@ -122,6 +116,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       make(`${id}:land`, body.texture, pick(AIR_FRAMES.land), 14, 0);
 
       if (aura) {
+        make(`${id}:charge-start`, aura.texture, aura.frames.charge_start, 10, 0);
         make(`${id}:charge-loop`, aura.texture, aura.frames.charge, CHARGE_FPS, -1); // carregando ki (aura)
         const t = aura.frames.transform;
         if (t) {
@@ -132,15 +127,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
       // tiro: segurar Q (mão com a bola crescendo) e soltar (bola pequena ou grande)
       const sm = shot.frames.small;
-      const bg = shot.frames.big;
-      make(`${id}:shot-charge`, shot.texture, [sm[1]!, sm[2]!, sm[3]!], 9, 0);
-      make(`${id}:shot-charge-big`, shot.texture, [bg[2]!, bg[3]!, bg[4]!], 8, 0);
-      make(`${id}:shot-small`, shot.texture, sm.slice(3), SHOT_FPS, 0);
-      make(`${id}:shot-big`, shot.texture, bg.slice(4), 12, 0);
+      const hold = shot.frames.hold;
+      make(`${id}:shot-charge`, shot.texture, hold.slice(0, 4), 9, 0);
+      make(`${id}:shot-charge-big`, shot.texture, hold.slice(4), 8, 0);
+      make(`${id}:shot-small`, shot.texture, sm, SHOT_FPS, 0);
+      make(`${id}:shot-big`, shot.texture, [hold.at(-1), sm[1], sm[2]], SHOT_FPS, 0);
     }
-
-    // forma normal: o começo de carregar ki continua sendo o sprite antigo
-    make('normal:charge-start', KI_TEXTURE, KI_FRAMES.charge_start, 10, 0);
   }
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -154,7 +146,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setCollideWorldBounds(true);
     this.syncFrameAnchor();
 
-    const kb = scene.input.keyboard!;
+    const kb = scene.input.keyboard;
+    if (!kb) throw new Error('Keyboard input is unavailable');
     const K = Phaser.Input.Keyboard.KeyCodes;
     this.keys = {
       left: kb.addKey(K.LEFT),
@@ -191,7 +184,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   /** A cena escuta 'fire' (x, y, direção, tamanho, forma) para criar o projétil. */
   private fireKiBall(): void {
-    const ball = FORM_SHEETS[this.visualForm].shot.ball![this.shotRow]!;
+    const ball = FORM_SHEETS[this.visualForm].shot.ball?.[this.shotRow];
+    if (!ball) return;
     const x = this.x + this.facing * ball.dx * SCALE;
     const y = this.y - ball.dy * SCALE;
     this.emit('fire', x, y, this.facing, this.shotPower, this.visualForm);
@@ -232,7 +226,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const form = this.visualForm;
     this.shotRow = this.shotBig ? 'big' : 'small';
     this.shotPower = shotSize(this.shotSpent);
-    this.fireFrame = FORM_SHEETS[form].shot.frames[this.shotRow][FIRE_AT]!;
+    this.fireFrame = FORM_SHEETS[form].shot.frames.small[FIRE_AT] ?? -1;
     this.shotState = 'releasing';
     this.anims.play(`${form}:shot-${this.shotRow}`);
   }

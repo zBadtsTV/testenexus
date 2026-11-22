@@ -1,13 +1,12 @@
 import * as Phaser from 'phaser';
-import { FORM_SHEETS } from '../formSheets';
+import { FORM_SHEETS } from '../sheets';
+import { GAME_ASSETS } from '../assets';
 import type { FormId } from '../forms';
-import { KI_FRAME_HEIGHT, KI_FRAME_WIDTH } from '../kiSheet';
 import { FORM_IDS, FORM_LABEL, HP_MAX, KI_MAX, KI_SHOT_COST } from '../forms';
-import { KI_TEXTURE, Player, SCALE } from '../entities/Player';
+import { Player, SCALE } from '../entities/Player';
 
 const GROUND_HEIGHT = 90;
-const KI_BALL_TEXTURE = 'ki_ball';
-const KI_BALL_KAIOKEN = 'ki_ball_kaioken'; // a mesma bola com a cor trocada para rosa/vermelho
+const kiBallTexture = (form: FormId) => `ki_ball_${form}`;
 const KI_BALL_SPEED = 720;
 
 // barras (HUD)
@@ -43,15 +42,10 @@ export class GameScene extends Phaser.Scene {
     for (const id of FORM_IDS) {
       const { body, aura, shot } = FORM_SHEETS[id];
       for (const sheet of [body, aura, shot]) {
-        if (sheet) this.load.spritesheet(sheet.texture, sheet.file, { frameWidth: sheet.w, frameHeight: sheet.h });
+        if (sheet) this.load.spritesheet(sheet.texture, GAME_ASSETS[sheet.texture] ?? sheet.file, { frameWidth: sheet.w, frameHeight: sheet.h });
       }
     }
-    this.load.spritesheet(KI_TEXTURE, 'assets/ki.png', {
-      frameWidth: KI_FRAME_WIDTH,
-      frameHeight: KI_FRAME_HEIGHT,
-    });
-    this.load.image(KI_BALL_TEXTURE, 'assets/ki_ball.png');
-    this.load.image(KI_BALL_KAIOKEN, 'assets/ki_ball_kaioken.png');
+    for (const id of FORM_IDS) this.load.image(kiBallTexture(id), GAME_ASSETS[kiBallTexture(id)] ?? `assets/ki_ball_${id}.png`);
   }
 
   create(): void {
@@ -94,8 +88,7 @@ export class GameScene extends Phaser.Scene {
 
   /** `size`: 1 = bolinha normal; tiros carregados (Q segurado) saem maiores. */
   private spawnKiBall(x: number, y: number, dir: 1 | -1, size: number, form: FormId): void {
-    const texture = form === 'kaioken' ? KI_BALL_KAIOKEN : KI_BALL_TEXTURE;
-    const ball = this.kiBalls.create(x, y, texture) as Phaser.Physics.Arcade.Sprite;
+    const ball = this.kiBalls.create(x, y, kiBallTexture(form)) as Phaser.Physics.Arcade.Sprite;
     ball.setScale(SCALE * size);
     ball.setFlipX(dir === -1); // a imagem aponta para a direita
     ball.setVelocityX(dir * KI_BALL_SPEED * (size > 1 ? 0.85 : 1)); // bola grande é um pouco mais lenta

@@ -1,2 +1,2 @@
-- [ ] Importar os sprites e animações da nova versão.
-- [ ] Testar movimento, carga, tiros e transformações na prévia.
+- [x] Importar os sprites e animações da nova versão.
+- [x] Testar movimento, carga, tiros e transformações na prévia.
