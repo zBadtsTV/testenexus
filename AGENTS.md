@@ -32,3 +32,4 @@ use the editor.
 - Preserve imported generated sprite metadata verbatim; validate animation rows in the game adapter so regeneration does not erase type safety.
 - Load game media through committed asset pointers so sprite updates use immutable CDN URLs.
 - Apply individually uploaded animation strips through spriteOverrides with shared foot/body anchors; leave unrelated animations and generated form metadata unchanged.
+- Determine movement mirroring from the active override key, not the form, because uploaded strips face right while generated sheets contain separate directional rows.

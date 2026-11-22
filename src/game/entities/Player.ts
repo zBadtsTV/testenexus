@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { FORM_SHEETS } from '../sheets';
-import { OVERRIDE_ANCHOR, SPRITE_OVERRIDES } from '../spriteOverrides';
+import { OVERRIDE_ANCHOR, SPRITE_OVERRIDES, shouldMirrorMovement } from '../spriteOverrides';
 import {
   AIR_FRAMES,
   FORM_IDS,
@@ -404,8 +404,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.playAnim(body.velocity.y < 0 ? k('jump') : k('fall'));
       } else if (dir !== 0) {
         this.landTimer = 0;
-        this.setFlipX(form === 'normal' && this.facing === -1);
-        this.playAnim(k(`${running ? 'run' : 'walk'}-${side}`));
+        const movement = k(`${running ? 'run' : 'walk'}-${side}`);
+        this.setFlipX(shouldMirrorMovement(movement, this.facing));
+        this.playAnim(movement);
       } else if (this.landTimer > 0) {
         this.setFlipX(this.facing === -1);
         this.playAnim(k('land'));
