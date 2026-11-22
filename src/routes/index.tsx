@@ -4,10 +4,10 @@ import { useEffect, useRef } from "react";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Phaser Platformer" },
-      { name: "description", content: "Jogo de plataforma em Phaser: ande, corra e pule." },
-      { property: "og:title", content: "Phaser Platformer" },
-      { property: "og:description", content: "Jogo de plataforma em Phaser: ande, corra e pule." },
+      { title: "Aetheria — Treino de Ki" },
+      { name: "description", content: "Treino de plataforma com tiros de ki, Super Sayajin e Kaioken." },
+      { property: "og:title", content: "Aetheria — Treino de Ki" },
+      { property: "og:description", content: "Treino de plataforma com tiros de ki, Super Sayajin e Kaioken." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],

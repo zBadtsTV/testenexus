@@ -8,41 +8,167 @@ export interface SheetInfo {
   /** distância do topo da célula até os pés, e da esquerda da célula até o centro do personagem */
   feetY: number;
   anchorX: number;
-  frames: Record<FrameKey, number[]>;
+  frames: Record<string, number[]>;
   /** só nas planilhas de tiro: onde a bola nasce (px do frame, relativo aos pés; +dx à frente) */
   ball?: Record<string, { dx: number; dy: number }>;
 }
 
-export type FrameKey = "idle" | "walk_right" | "walk_left" | "run_right" | "run_left" | "air" | "aura" | "transform" | "charge" | "small" | "big";
 export type FormId = 'normal' | 'ssj' | 'kaioken';
 
-type FormSheetsT = Record<FormId, { body: SheetInfo; aura: SheetInfo | null; shot: SheetInfo }>;
-const RAW_FORM_SHEETS = {
+export const FORM_SHEETS: Record<FormId, { body: SheetInfo; aura: SheetInfo | null; shot: SheetInfo }> = {
   "normal": {
     "body": {
       "file": "assets/normal.png",
       "texture": "normal",
       "frames": {
-        "idle": [
+        "walk_right": [
           0,
           1,
           2,
           3,
           4,
-          5
-        ],
-        "walk_right": [
+          5,
           6,
-          7,
+          7
+        ],
+        "walk_left": [
           8,
           9,
           10,
           11,
           12,
-          13
-        ],
-        "walk_left": [
+          13,
           14,
+          15
+        ],
+        "run_right": [
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "run_left": [
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "air": [
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39
+        ],
+        "idle": [
+          40,
+          41,
+          42,
+          43
+        ]
+      },
+      "w": 213,
+      "h": 214,
+      "feetY": 209,
+      "anchorX": 107
+    },
+    "aura": {
+      "file": "assets/normal_aura.png",
+      "texture": "normal_aura",
+      "frames": {
+        "charge_start": [
+          0,
+          1,
+          2
+        ],
+        "charge": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "w": 202,
+      "h": 247,
+      "feetY": 225,
+      "anchorX": 107
+    },
+    "shot": {
+      "file": "assets/normal_shot.png",
+      "texture": "normal_shot",
+      "frames": {
+        "hold": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "small": [
+          8,
+          9,
+          10
+        ]
+      },
+      "w": 181,
+      "h": 207,
+      "feetY": 201,
+      "anchorX": 78,
+      "ball": {
+        "small": {
+          "dx": 115.1,
+          "dy": 84.8
+        },
+        "big": {
+          "dx": 42.6,
+          "dy": 84.9
+        }
+      }
+    }
+  },
+  "ssj": {
+    "body": {
+      "file": "assets/ssj.png",
+      "texture": "ssj",
+      "frames": {
+        "walk_left": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "run_right": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "run_left": [
           15,
           16,
           17,
@@ -51,7 +177,7 @@ const RAW_FORM_SHEETS = {
           20,
           21
         ],
-        "run_right": [
+        "air": [
           22,
           23,
           24,
@@ -61,7 +187,7 @@ const RAW_FORM_SHEETS = {
           28,
           29
         ],
-        "run_left": [
+        "walk_right": [
           30,
           31,
           32,
@@ -71,47 +197,23 @@ const RAW_FORM_SHEETS = {
           36,
           37
         ],
-        "air": [
+        "idle": [
           38,
           39,
           40,
-          41,
-          42,
-          43,
-          44,
-          45
+          41
         ]
       },
-      "w": 213,
-      "h": 241,
-      "feetY": 236,
-      "anchorX": 107
+      "w": 205,
+      "h": 240,
+      "feetY": 234,
+      "anchorX": 103
     },
     "aura": {
-      "file": "assets/normal_aura.png",
-      "texture": "normal_aura",
+      "file": "assets/ssj_aura.png",
+      "texture": "ssj_aura",
       "frames": {
-        "charge": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7
-        ]
-      },
-      "w": 307,
-      "h": 263,
-      "feetY": 253,
-      "anchorX": 151
-    },
-    "shot": {
-      "file": "assets/normal_shot.png",
-      "texture": "normal_shot",
-      "frames": {
-        "small": [
+        "transform": [
           0,
           1,
           2,
@@ -124,130 +226,16 @@ const RAW_FORM_SHEETS = {
           9,
           10
         ],
-        "big": [
+        "charge_start": [
           11,
           12,
-          13,
-          14,
-          15,
-          16,
-          17,
-          18,
-          19,
-          20,
-          21
-        ]
-      },
-      "w": 478,
-      "h": 246,
-      "feetY": 227,
-      "anchorX": 154,
-      "ball": {
-        "small": {
-          "dx": 123.0,
-          "dy": 117.4
-        },
-        "big": {
-          "dx": 52.9,
-          "dy": 106.0
-        }
-      }
-    }
-  },
-  "ssj": {
-    "body": {
-      "file": "assets/ssj.png",
-      "texture": "ssj",
-      "frames": {
-        "idle": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6
+          13
         ],
-        "walk_left": [
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13,
-          14
-        ],
-        "run_right": [
-          15,
-          16,
-          17,
-          18,
-          19,
-          20,
-          21
-        ],
-        "run_left": [
-          22,
-          23,
-          24,
-          25,
-          26,
-          27,
-          28
-        ],
-        "air": [
-          29,
-          30,
-          31,
-          32,
-          33,
-          34,
-          35,
-          36
-        ],
-        "walk_right": [
-          37,
-          38,
-          39,
-          40,
-          41,
-          42,
-          43,
-          44
-        ]
-      },
-      "w": 205,
-      "h": 253,
-      "feetY": 247,
-      "anchorX": 103
-    },
-    "aura": {
-      "file": "assets/ssj_aura.png",
-      "texture": "ssj_aura",
-      "frames": {
         "charge": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7
-        ],
-        "transform": [
-          8,
-          9,
-          10,
-          11,
-          12,
-          13,
           14,
           15,
           16,
-          17,
-          18
+          17
         ]
       },
       "w": 434,
@@ -259,7 +247,7 @@ const RAW_FORM_SHEETS = {
       "file": "assets/ssj_shot.png",
       "texture": "ssj_shot",
       "frames": {
-        "small": [
+        "hold": [
           0,
           1,
           2,
@@ -267,34 +255,26 @@ const RAW_FORM_SHEETS = {
           4,
           5,
           6,
-          7,
+          7
+        ],
+        "small": [
           8,
           9,
           10
-        ],
-        "big": [
-          11,
-          12,
-          13,
-          14,
-          15,
-          16,
-          17,
-          18
         ]
       },
-      "w": 464,
-      "h": 267,
-      "feetY": 238,
-      "anchorX": 188,
+      "w": 203,
+      "h": 233,
+      "feetY": 224,
+      "anchorX": 87,
       "ball": {
         "small": {
-          "dx": 110.7,
-          "dy": 127.4
+          "dx": 134.6,
+          "dy": 77.7
         },
         "big": {
-          "dx": 37.2,
-          "dy": 95.1
+          "dx": 52.8,
+          "dy": 94.4
         }
       }
     }
@@ -304,17 +284,17 @@ const RAW_FORM_SHEETS = {
       "file": "assets/kaioken.png",
       "texture": "kaioken",
       "frames": {
-        "idle": [
+        "walk_left": [
           0,
           1,
           2,
           3,
           4,
           5,
-          6
+          6,
+          7
         ],
-        "walk_left": [
-          7,
+        "run_right": [
           8,
           9,
           10,
@@ -323,7 +303,7 @@ const RAW_FORM_SHEETS = {
           13,
           14
         ],
-        "run_right": [
+        "run_left": [
           15,
           16,
           17,
@@ -332,34 +312,31 @@ const RAW_FORM_SHEETS = {
           20,
           21
         ],
-        "run_left": [
+        "air": [
           22,
           23,
           24,
           25,
           26,
           27,
-          28
+          28,
+          29
         ],
-        "air": [
-          29,
+        "walk_right": [
           30,
           31,
           32,
           33,
           34,
           35,
-          36
+          36,
+          37
         ],
-        "walk_right": [
-          37,
+        "idle": [
           38,
           39,
           40,
-          41,
-          42,
-          43,
-          44
+          41
         ]
       },
       "w": 242,
@@ -371,40 +348,7 @@ const RAW_FORM_SHEETS = {
       "file": "assets/kaioken_aura.png",
       "texture": "kaioken_aura",
       "frames": {
-        "charge": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7
-        ],
         "transform": [
-          8,
-          9,
-          10,
-          11,
-          12,
-          13,
-          14,
-          15,
-          16,
-          17,
-          18
-        ]
-      },
-      "w": 343,
-      "h": 332,
-      "feetY": 286,
-      "anchorX": 192
-    },
-    "shot": {
-      "file": "assets/kaioken_shot.png",
-      "texture": "kaioken_shot",
-      "frames": {
-        "small": [
           0,
           1,
           2,
@@ -417,32 +361,57 @@ const RAW_FORM_SHEETS = {
           9,
           10
         ],
-        "big": [
+        "charge_start": [
           11,
           12,
-          13,
+          13
+        ],
+        "charge": [
           14,
           15,
           16,
-          17,
-          18
+          17
         ]
       },
-      "w": 472,
-      "h": 267,
-      "feetY": 247,
-      "anchorX": 128,
+      "w": 312,
+      "h": 332,
+      "feetY": 286,
+      "anchorX": 172
+    },
+    "shot": {
+      "file": "assets/kaioken_shot.png",
+      "texture": "kaioken_shot",
+      "frames": {
+        "hold": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "small": [
+          8,
+          9,
+          10
+        ]
+      },
+      "w": 212,
+      "h": 236,
+      "feetY": 227,
+      "anchorX": 90,
       "ball": {
         "small": {
-          "dx": 91.1,
-          "dy": 110.9
+          "dx": 138.8,
+          "dy": 91.0
         },
         "big": {
-          "dx": 66.9,
-          "dy": 96.1
+          "dx": 49.7,
+          "dy": 98.8
         }
       }
     }
   }
 };
-export const FORM_SHEETS = RAW_FORM_SHEETS as unknown as FormSheetsT;

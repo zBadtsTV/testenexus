@@ -29,3 +29,5 @@ use the editor.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
 - Phaser game code lives in src/game and is loaded via dynamic import in useEffect; Phaser touches window so it must never run during SSR.
+- Preserve imported generated sprite metadata verbatim; validate animation rows in the game adapter so regeneration does not erase type safety.
+- Load game media through committed asset pointers so sprite updates use immutable CDN URLs.
