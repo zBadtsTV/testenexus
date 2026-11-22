@@ -1,15 +1,21 @@
 import * as Phaser from 'phaser';
 import { FORM_SHEETS } from '../formSheets';
-import { KI_BALL_SPAWN, KI_FEET_Y, KI_FRAMES, KI_FRAME_HEIGHT, KI_FRAME_WIDTH } from '../kiSheet';
+import { KI_FEET_Y, KI_FRAMES, KI_FRAME_HEIGHT, KI_FRAME_WIDTH } from '../kiSheet';
 import {
   AIR_FRAMES,
   FORM_IDS,
   FORM_LABEL,
   KI_SHOT_COST,
   PowerState,
+  SHOT_BIG_FROM,
+  SHOT_CHARGE_PER_SEC,
+  SHOT_MAX_COST,
+  TRANSFORM_FRAMES,
+  shotSize,
   type FormId,
 } from '../forms';
 
+/** Só a animação de "começar a carregar ki" da forma normal vem desta planilha (a antiga). */
 export const KI_TEXTURE = 'ki';
 
 export const SCALE = 0.55;
@@ -20,25 +26,32 @@ const JUMP_SPEED = 640;
 // Velocidade das animações (quadros por segundo). Mais baixo = a troca dos pés fica mais visível.
 const IDLE_FPS = 5;
 const WALK_FPS = 8; // 8 frames -> um ciclo completo (dois passos) a cada 1s
-const RUN_FPS = 12; // 8-10 frames -> ciclo de ~0,7-0,85s
-const TRANSFORM_FPS = 7; // 6 frames -> ~0,85s
-const REVERT_FPS = 14;
+const RUN_FPS = 12; // 7-8 frames -> ciclo de ~0,6-0,7s
+const CHARGE_FPS = 10;
+const TRANSFORM_FPS = 9; // 8 frames -> ~0,9s
+const REVERT_FPS = 10; // 4 frames -> ~0,4s
 const LAND_MS = 140; // quanto tempo mostra o frame de aterrissagem
+
+// Tiro: frames de cada animação (índices dentro das linhas "small"/"big" da planilha de tiro).
+const SHOT_FPS = 14;
+const FIRE_AT = 5; // frame (da linha small/big) em que a bola sai da mão
 
 // Caixa de colisão em pixels do FRAME (o Phaser aplica a escala sozinho).
 const BODY_W = 55;
 const BODY_H = 190;
 
 type Facing = -1 | 1;
+type ShotState = 'idle' | 'charging' | 'releasing';
 
-/** Tamanho da célula e altura dos pés de cada textura (para reancorar o sprite a cada frame). */
-const ANCHORS: Record<string, { w: number; h: number; feetY: number }> = {
-  [KI_TEXTURE]: { w: KI_FRAME_WIDTH, h: KI_FRAME_HEIGHT, feetY: KI_FEET_Y },
+/** Tamanho da célula, pés e centro de cada textura (para reancorar o sprite a cada frame). */
+const ANCHORS: Record<string, { w: number; h: number; feetY: number; ax: number }> = {
+  [KI_TEXTURE]: { w: KI_FRAME_WIDTH, h: KI_FRAME_HEIGHT, feetY: KI_FEET_Y, ax: KI_FRAME_WIDTH / 2 },
 };
 for (const id of FORM_IDS) {
-  const { body, aura } = FORM_SHEETS[id];
-  ANCHORS[body.texture] = { w: body.w, h: body.h, feetY: body.feetY };
-  if (aura) ANCHORS[aura.texture] = { w: aura.w, h: aura.h, feetY: aura.feetY };
+  const { body, aura, shot } = FORM_SHEETS[id];
+  for (const s of [body, aura, shot]) {
+    if (s) ANCHORS[s.texture] = { w: s.w, h: s.h, feetY: s.feetY, ax: s.anchorX };
+  }
 }
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -56,7 +69,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private locked = false;
   private pendingForm: FormId | null = null;
 
-  private shooting = false;
+  // tiro (Q): toque = bolinha; segurar = gasta mais ki, solta uma bola grande
+  private shotState: ShotState = 'idle';
+  private shotSpent = 0;
+  private shotBig = false;
+  private shotPower = 1;
+  private shotRow: 'small' | 'big' = 'small';
+  private fireFrame = -1;
+
   private chargeIntroDone = false;
   private wasOnGround = false;
   private landTimer = 0;
@@ -70,6 +90,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   get hp(): number {
     return this.power.hp;
   }
+  /** Quanto de ki o tiro segurado já gastou (0 se não está carregando). */
+  get shotCharge(): number {
+    return this.shotState === 'charging' ? this.shotSpent : 0;
+  }
 
   /** Cria todas as animações (chamar uma vez, no create da cena). */
   static createAnimations(scene: Phaser.Scene): void {
@@ -77,16 +101,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       if (scene.anims.exists(key)) return;
       scene.anims.create({
         key,
-        frames: frames.filter((f): f is number => f !== undefined).map((frame) => ({ key: texture, frame })),
+        frames: frames.filter((fr): fr is number => fr !== undefined).map((frame) => ({ key: texture, frame })),
         frameRate,
         repeat,
       });
     };
 
     for (const id of FORM_IDS) {
-      const { body, aura } = FORM_SHEETS[id];
+      const { body, aura, shot } = FORM_SHEETS[id];
       const f = body.frames;
-      const air = AIR_FRAMES[id];
       const pick = (idx: number[]) => idx.map((i) => f.air[i]);
 
       make(`${id}:idle`, body.texture, f.idle, IDLE_FPS, -1);
@@ -94,24 +117,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       make(`${id}:walk-left`, body.texture, f.walk_left, WALK_FPS, -1);
       make(`${id}:run-right`, body.texture, f.run_right, RUN_FPS, -1);
       make(`${id}:run-left`, body.texture, f.run_left, RUN_FPS, -1);
-      make(`${id}:jump`, body.texture, pick(air.jump), 12, 0); // toca uma vez e segura o último frame
-      make(`${id}:fall`, body.texture, pick(air.fall), 6, 0);
-      make(`${id}:land`, body.texture, pick(air.land), 14, 0);
+      make(`${id}:jump`, body.texture, pick(AIR_FRAMES.jump), 12, 0); // toca uma vez e segura o último frame
+      make(`${id}:fall`, body.texture, pick(AIR_FRAMES.fall), 6, 0);
+      make(`${id}:land`, body.texture, pick(AIR_FRAMES.land), 14, 0);
 
       if (aura) {
-        const a = aura.frames.aura;
+        make(`${id}:charge-loop`, aura.texture, aura.frames.charge, CHARGE_FPS, -1); // carregando ki (aura)
         const t = aura.frames.transform;
-        make(`${id}:charge-start`, aura.texture, a.slice(0, 3), 10, 0); // aura começa a crescer
-        make(`${id}:charge-loop`, aura.texture, a.slice(3), 8, -1); // aura cheia mexendo
-        make(`${id}:transform`, aura.texture, t, TRANSFORM_FPS, 0); // cabelo muda + aura explode
-        make(`${id}:revert`, aura.texture, [...t].reverse(), REVERT_FPS, 0); // o inverso, mais rápido
+        if (t) {
+          make(`${id}:transform`, aura.texture, TRANSFORM_FRAMES.to.map((i) => t[i]), TRANSFORM_FPS, 0);
+          make(`${id}:revert`, aura.texture, TRANSFORM_FRAMES.back.map((i) => t[i]), REVERT_FPS, 0);
+        }
       }
+
+      // tiro: segurar Q (mão com a bola crescendo) e soltar (bola pequena ou grande)
+      const sm = shot.frames.small;
+      const bg = shot.frames.big;
+      make(`${id}:shot-charge`, shot.texture, [sm[1]!, sm[2]!, sm[3]!], 9, 0);
+      make(`${id}:shot-charge-big`, shot.texture, [bg[2]!, bg[3]!, bg[4]!], 8, 0);
+      make(`${id}:shot-small`, shot.texture, sm.slice(3), SHOT_FPS, 0);
+      make(`${id}:shot-big`, shot.texture, bg.slice(4), 12, 0);
     }
 
-    // forma normal: carregar ki e atirar usam a planilha de ki
+    // forma normal: o começo de carregar ki continua sendo o sprite antigo
     make('normal:charge-start', KI_TEXTURE, KI_FRAMES.charge_start, 10, 0);
-    make('normal:charge-loop', KI_TEXTURE, KI_FRAMES.charge_loop, 12, -1);
-    make('normal:shoot', KI_TEXTURE, KI_FRAMES.shoot, 14, 0); // o último frame é o disparo
   }
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -143,26 +172,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       h: kb.addKey(K.H),
     };
 
-    // A bolinha sai no último frame da animação de tiro.
+    // A bola sai da mão no frame FIRE_AT da animação de tiro.
     this.on(
       Phaser.Animations.Events.ANIMATION_UPDATE,
       (anim: Phaser.Animations.Animation, frame: Phaser.Animations.AnimationFrame) => {
-        if (anim.key.endsWith(':shoot') && frame.isLast) this.fireKiBall();
+        if (this.shotState === 'releasing' && anim.key.includes(':shot-') && frame.textureFrame === this.fireFrame) {
+          this.fireKiBall();
+        }
       },
     );
     this.on(Phaser.Animations.Events.ANIMATION_COMPLETE, (anim: Phaser.Animations.Animation) => {
-      if (anim.key.endsWith(':shoot')) this.shooting = false;
+      if (anim.key.endsWith(':shot-small') || anim.key.endsWith(':shot-big')) this.shotState = 'idle';
       if (anim.key.endsWith(':charge-start')) this.chargeIntroDone = true;
       if (anim.key.endsWith(':transform')) this.finishTransform();
       if (anim.key.endsWith(':revert')) this.finishRevert();
     });
   }
 
-  /** A cena escuta 'fire' (x, y, direção) para criar o projétil. */
+  /** A cena escuta 'fire' (x, y, direção, tamanho, forma) para criar o projétil. */
   private fireKiBall(): void {
-    const x = this.x + this.facing * KI_BALL_SPAWN.dx * SCALE;
-    const y = this.y - KI_BALL_SPAWN.dy * SCALE;
-    this.emit('fire', x, y, this.facing);
+    const ball = FORM_SHEETS[this.visualForm].shot.ball![this.shotRow]!;
+    const x = this.x + this.facing * ball.dx * SCALE;
+    const y = this.y - ball.dy * SCALE;
+    this.emit('fire', x, y, this.facing, this.shotPower, this.visualForm);
+    this.fireFrame = -1; // só uma bola por tiro
   }
 
   /** Avisos para a HUD. */
@@ -171,6 +204,37 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
   private hint(text: string): void {
     this.emit('hint', text);
+  }
+
+  // ---------------------------------------------------------------- tiro (Q)
+  private startShot(): void {
+    this.power.spendKi(KI_SHOT_COST);
+    this.shotSpent = KI_SHOT_COST;
+    this.shotBig = false;
+    this.shotState = 'charging';
+    this.setFlipX(this.facing === -1);
+    this.anims.play(`${this.visualForm}:shot-charge`);
+  }
+
+  /** Segurando Q: vai gastando mais ki; passou de SHOT_BIG_FROM, a bola da mão vira a grande. */
+  private chargeShot(delta: number): void {
+    if (this.shotSpent < SHOT_MAX_COST && this.power.ki > 0) {
+      const want = Math.min((SHOT_CHARGE_PER_SEC * delta) / 1000, SHOT_MAX_COST - this.shotSpent);
+      this.shotSpent += this.power.spendKi(want);
+    }
+    if (!this.shotBig && this.shotSpent >= SHOT_BIG_FROM) {
+      this.shotBig = true;
+      this.anims.play(`${this.visualForm}:shot-charge-big`);
+    }
+  }
+
+  private releaseShot(): void {
+    const form = this.visualForm;
+    this.shotRow = this.shotBig ? 'big' : 'small';
+    this.shotPower = shotSize(this.shotSpent);
+    this.fireFrame = FORM_SHEETS[form].shot.frames[this.shotRow][FIRE_AT]!;
+    this.shotState = 'releasing';
+    this.anims.play(`${form}:shot-${this.shotRow}`);
   }
 
   // ---------------------------------------------------------------- transformações
@@ -195,7 +259,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
     this.locked = true;
     this.pendingForm = target;
-    this.shooting = false;
+    this.shotState = 'idle';
     this.setVelocityX(0);
     this.setFlipX(this.facing === -1);
     this.anims.play(`${target}:transform`);
@@ -217,11 +281,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const from = this.power.form;
     if (from === 'normal') return;
     this.power.form = 'normal'; // o gasto de vida/ki para na hora
+    this.shotState = 'idle';
     const body = this.body as Phaser.Physics.Arcade.Body;
     const onGround = body.blocked.down || body.touching.down;
     if (onGround) {
       this.locked = true;
-      this.shooting = false;
       this.setVelocityX(0);
       this.setFlipX(this.facing === -1);
       this.anims.play(`${from}:revert`);
@@ -257,6 +321,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const running = this.keys.shift.isDown;
     const wantsJump = this.keys.space.isDown || this.keys.up.isDown || this.keys.w.isDown;
     const holdingC = this.keys.c.isDown;
+    const holdingQ = this.keys.q.isDown;
     const pressedQ = Phaser.Input.Keyboard.JustDown(this.keys.q);
     const pressedG = Phaser.Input.Keyboard.JustDown(this.keys.g);
     const pressedK = Phaser.Input.Keyboard.JustDown(this.keys.k);
@@ -276,10 +341,35 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
-    // --- G / K: transformar (só no chão) ---
-    if (onGround) {
+    // --- G / K: transformar (só no chão, sem estar atirando) ---
+    if (onGround && this.shotState === 'idle') {
       if (pressedG) this.toggleForm('ssj');
       else if (pressedK) this.toggleForm('kaioken');
+      if (this.locked) {
+        this.syncFrameAnchor();
+        return;
+      }
+    }
+
+    // --- Q: começa a carregar o tiro ---
+    if (pressedQ && onGround && this.shotState === 'idle' && !holdingC) {
+      if (this.power.ki >= KI_SHOT_COST) this.startShot();
+      else this.denyShot();
+    }
+
+    // --- recarregar ki com C (também dentro das formas) ---
+    const chargingKi = holdingC && onGround && this.shotState === 'idle';
+    if (chargingKi) this.power.charge(delta);
+
+    // --- segurando Q: gasta mais ki; soltou (ou acabou o ki): lança ---
+    if (this.shotState === 'charging') {
+      if (holdingQ) this.chargeShot(delta);
+      if (!holdingQ || (this.power.ki <= 0 && this.shotSpent < SHOT_MAX_COST)) this.releaseShot();
+    }
+
+    // --- gasto da forma ativa (Kaioken = vida, Super Sayajin = ki) ---
+    if (this.power.form !== 'normal' && this.power.drain(delta)) {
+      this.beginRevert();
       if (this.locked) {
         this.syncFrameAnchor();
         return;
@@ -289,48 +379,22 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const form = this.visualForm;
     const k = (name: string) => `${form}:${name}`;
 
-    // --- atirar (Q): só existe sprite de tiro na forma normal ---
-    if (pressedQ && onGround && !this.shooting) {
-      if (form !== 'normal') {
-        this.hint('Ainda não há sprite de tiro para essa forma');
-      } else if (this.power.ki >= KI_SHOT_COST) {
-        this.power.ki -= KI_SHOT_COST;
-        this.shooting = true;
-        this.setFlipX(this.facing === -1);
-        this.anims.play('normal:shoot');
-      } else {
-        this.denyShot();
-      }
-    }
-
-    // --- gasto da forma ativa (Kaioken = vida, Super Sayajin = ki) ---
-    if (this.power.form !== 'normal') {
-      if (holdingC && onGround && !this.shooting) this.power.charge(delta); // carregar compensa parte do gasto
-      if (this.power.drain(delta)) {
-        this.beginRevert();
-        if (this.locked) {
-          this.syncFrameAnchor();
-          return;
-        }
-      }
-    } else if (holdingC && onGround && !this.shooting) {
-      this.power.charge(delta);
-    }
-
-    if (this.shooting) {
+    if (this.shotState !== 'idle') {
+      // --- atirando: parado, virado para onde olhava ---
       this.setVelocityX(0);
-    } else if (holdingC && onGround) {
+    } else if (chargingKi) {
       // --- carregando ki (segurando C) ---
       this.setVelocityX(0);
       this.setFlipX(this.facing === -1);
-      this.playAnim(this.chargeIntroDone ? k('charge-loop') : k('charge-start'));
+      const hasIntro = this.scene.anims.exists(k('charge-start'));
+      this.playAnim(hasIntro && !this.chargeIntroDone ? k('charge-start') : k('charge-loop'));
     } else {
       // --- movimento normal ---
       this.setVelocityX(dir * (running ? RUN_SPEED : WALK_SPEED));
       if (dir !== 0) this.facing = dir;
       if (wantsJump && onGround) this.setVelocityY(-JUMP_SPEED);
 
-      // andar/correr têm frames próprios para cada lado; o resto só existe virado para a
+      // Andar/correr têm frames próprios para cada lado; o resto só existe virado para a
       // direita, então espelhamos (flipX) quando olha para a esquerda.
       const side = this.facing === 1 ? 'right' : 'left';
       if (!onGround) {
@@ -353,14 +417,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Os frames vêm de planilhas com tamanhos de célula diferentes (corpo, aura, ki).
-   * Ajusta a origem (pés) e o offset da caixa de colisão para o frame atual, para o
-   * personagem não "pular" de posição quando a animação troca de planilha.
+   * Os frames vêm de planilhas com células de tamanhos diferentes (corpo, aura, tiro, ki).
+   * Ajusta a origem (pés / centro do personagem) e o offset da caixa de colisão para o frame
+   * atual, para o personagem não "pular" de posição quando a animação troca de planilha.
+   * Com flipX o Phaser espelha a imagem dentro da célula, então o centro também espelha.
    */
   private syncFrameAnchor(): void {
     const a = ANCHORS[this.frame.texture.key];
     if (!a) return;
-    this.setOrigin(0.5, a.feetY / a.h);
-    (this.body as Phaser.Physics.Arcade.Body).setOffset((a.w - BODY_W) / 2, a.feetY - BODY_H);
+    const ox = this.flipX ? 1 - a.ax / a.w : a.ax / a.w;
+    this.setOrigin(ox, a.feetY / a.h);
+    (this.body as Phaser.Physics.Arcade.Body).setOffset(ox * a.w - BODY_W / 2, a.feetY - BODY_H);
   }
 }

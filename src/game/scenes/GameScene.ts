@@ -1,11 +1,13 @@
 import * as Phaser from 'phaser';
 import { FORM_SHEETS } from '../formSheets';
+import type { FormId } from '../forms';
 import { KI_FRAME_HEIGHT, KI_FRAME_WIDTH } from '../kiSheet';
 import { FORM_IDS, FORM_LABEL, HP_MAX, KI_MAX, KI_SHOT_COST } from '../forms';
 import { KI_TEXTURE, Player, SCALE } from '../entities/Player';
 
 const GROUND_HEIGHT = 90;
 const KI_BALL_TEXTURE = 'ki_ball';
+const KI_BALL_KAIOKEN = 'ki_ball_kaioken'; // a mesma bola com a cor trocada para rosa/vermelho
 const KI_BALL_SPEED = 720;
 
 // barras (HUD)
@@ -39,15 +41,17 @@ export class GameScene extends Phaser.Scene {
 
   preload(): void {
     for (const id of FORM_IDS) {
-      const { body, aura } = FORM_SHEETS[id];
-      this.load.spritesheet(body.texture, body.file, { frameWidth: body.w, frameHeight: body.h });
-      if (aura) this.load.spritesheet(aura.texture, aura.file, { frameWidth: aura.w, frameHeight: aura.h });
+      const { body, aura, shot } = FORM_SHEETS[id];
+      for (const sheet of [body, aura, shot]) {
+        if (sheet) this.load.spritesheet(sheet.texture, sheet.file, { frameWidth: sheet.w, frameHeight: sheet.h });
+      }
     }
     this.load.spritesheet(KI_TEXTURE, 'assets/ki.png', {
       frameWidth: KI_FRAME_WIDTH,
       frameHeight: KI_FRAME_HEIGHT,
     });
     this.load.image(KI_BALL_TEXTURE, 'assets/ki_ball.png');
+    this.load.image(KI_BALL_KAIOKEN, 'assets/ki_ball_kaioken.png');
   }
 
   create(): void {
@@ -66,7 +70,9 @@ export class GameScene extends Phaser.Scene {
 
     // projéteis de ki (sem gravidade)
     this.kiBalls = this.physics.add.group({ allowGravity: false });
-    this.player.on('fire', (x: number, y: number, dir: 1 | -1) => this.spawnKiBall(x, y, dir));
+    this.player.on('fire', (x: number, y: number, dir: 1 | -1, size: number, form: FormId) =>
+      this.spawnKiBall(x, y, dir, size, form),
+    );
     this.player.on('no-ki', () => (this.kiFlash = 350));
     this.player.on('hint', (text: string) => this.showHint(text));
 
@@ -86,11 +92,13 @@ export class GameScene extends Phaser.Scene {
     this.updateHud(delta);
   }
 
-  private spawnKiBall(x: number, y: number, dir: 1 | -1): void {
-    const ball = this.kiBalls.create(x, y, KI_BALL_TEXTURE) as Phaser.Physics.Arcade.Sprite;
-    ball.setScale(SCALE);
+  /** `size`: 1 = bolinha normal; tiros carregados (Q segurado) saem maiores. */
+  private spawnKiBall(x: number, y: number, dir: 1 | -1, size: number, form: FormId): void {
+    const texture = form === 'kaioken' ? KI_BALL_KAIOKEN : KI_BALL_TEXTURE;
+    const ball = this.kiBalls.create(x, y, texture) as Phaser.Physics.Arcade.Sprite;
+    ball.setScale(SCALE * size);
     ball.setFlipX(dir === -1); // a imagem aponta para a direita
-    ball.setVelocityX(dir * KI_BALL_SPEED);
+    ball.setVelocityX(dir * KI_BALL_SPEED * (size > 1 ? 0.85 : 1)); // bola grande é um pouco mais lenta
     ball.setDepth(5);
   }
 
@@ -109,7 +117,7 @@ export class GameScene extends Phaser.Scene {
         16,
         10,
         '← → / A D: andar   Shift: correr   Espaço / ↑ / W: pular\n' +
-          'C (segurar): carregar ki   Q: atirar ki (forma normal)   H: restaurar vida e ki (teste)\n' +
+          'C (segurar): carregar ki   Q: atirar ki (SEGURE para uma bola maior)   H: restaurar vida e ki (teste)\n' +
           'G: Super Sayajin (precisa de 100% de ki)   K: Kaioken (gasta vida)   G / K de novo: voltar',
         { ...mono, fontSize: '15px' },
       )
