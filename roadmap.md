@@ -1,4 +1,4 @@
 - [x] Importar os sprites e animações da nova versão.
 - [x] Testar movimento, carga, tiros e transformações na prévia.
-- [ ] Recortar e alinhar os cinco sprites enviados, preservando as demais ações.
-- [ ] Verificar passos, Kaioken parado e as duas transformações no jogo.
+- [x] Recortar e alinhar os cinco sprites enviados, preservando as demais ações.
+- [x] Verificar passos, Kaioken parado e as duas transformações no jogo.
