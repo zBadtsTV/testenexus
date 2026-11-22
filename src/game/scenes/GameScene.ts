@@ -4,6 +4,7 @@ import { GAME_ASSETS } from '../assets';
 import type { FormId } from '../forms';
 import { FORM_IDS, FORM_LABEL, HP_MAX, KI_MAX, KI_SHOT_COST } from '../forms';
 import { Player, SCALE } from '../entities/Player';
+import { OVERRIDE_ANCHOR, SPRITE_OVERRIDES } from '../spriteOverrides';
 
 const GROUND_HEIGHT = 90;
 const kiBallTexture = (form: FormId) => `ki_ball_${form}`;
@@ -46,6 +47,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
     for (const id of FORM_IDS) this.load.image(kiBallTexture(id), GAME_ASSETS[kiBallTexture(id)] ?? `assets/ki_ball_${id}.png`);
+    for (const sheet of SPRITE_OVERRIDES) {
+      this.load.spritesheet(sheet.texture, sheet.url, { frameWidth: OVERRIDE_ANCHOR.w, frameHeight: OVERRIDE_ANCHOR.h });
+    }
   }
 
   create(): void {

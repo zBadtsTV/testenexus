@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { FORM_SHEETS } from '../sheets';
+import { OVERRIDE_ANCHOR, SPRITE_OVERRIDES } from '../spriteOverrides';
 import {
   AIR_FRAMES,
   FORM_IDS,
@@ -47,6 +48,7 @@ for (const id of FORM_IDS) {
     if (s) ANCHORS[s.texture] = { w: s.w, h: s.h, feetY: s.feetY, ax: s.anchorX };
   }
 }
+for (const sheet of SPRITE_OVERRIDES) ANCHORS[sheet.texture] = OVERRIDE_ANCHOR;
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   private keys!: Record<
@@ -132,6 +134,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       make(`${id}:shot-charge-big`, shot.texture, hold.slice(4), 8, 0);
       make(`${id}:shot-small`, shot.texture, sm, SHOT_FPS, 0);
       make(`${id}:shot-big`, shot.texture, [hold.at(-1), sm[1], sm[2]], SHOT_FPS, 0);
+    }
+    for (const sheet of SPRITE_OVERRIDES) {
+      for (const key of sheet.keys) {
+        scene.anims.remove(key);
+        make(key, sheet.texture, sheet.frames, sheet.fps, sheet.repeat);
+      }
     }
   }
 
@@ -396,7 +404,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.playAnim(body.velocity.y < 0 ? k('jump') : k('fall'));
       } else if (dir !== 0) {
         this.landTimer = 0;
-        this.setFlipX(false);
+        this.setFlipX(form === 'normal' && this.facing === -1);
         this.playAnim(k(`${running ? 'run' : 'walk'}-${side}`));
       } else if (this.landTimer > 0) {
         this.setFlipX(this.facing === -1);
