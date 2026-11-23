@@ -1,8 +1,12 @@
 import * as Phaser from 'phaser';
 import { FORM_SHEETS } from '../sheets';
 import { OVERRIDE_ANCHOR, SPRITE_OVERRIDES, shouldMirrorMovement } from '../spriteOverrides';
+import type { Controls } from '../input';
+import { FIGHTER_STRIPS } from '../fighterAssets';
 import {
   AIR_FRAMES,
+  PUNCH_DAMAGE,
+  attackDamage,
   FORM_IDS,
   FORM_LABEL,
   KI_SHOT_COST,
@@ -49,13 +53,20 @@ for (const id of FORM_IDS) {
   }
 }
 for (const sheet of SPRITE_OVERRIDES) ANCHORS[sheet.texture] = OVERRIDE_ANCHOR;
+for (const tex of Object.keys(FIGHTER_STRIPS)) ANCHORS[tex] = OVERRIDE_ANCHOR;
+export { ANCHORS };
+
+const PUNCH_HIT_FRAME = 4;
+const HITSTUN_MS = 260;
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
-  private keys!: Record<
-    'left' | 'right' | 'a' | 'd' | 'up' | 'w' | 'space' | 'shift' | 'c' | 'q' | 'g' | 'k' | 'h',
-    Phaser.Input.Keyboard.Key
-  >;
-  private facing: Facing = 1;
+  readonly character = 'goku' as const;
+  facing: Facing = 1;
+  private punching = false;
+  private stun = 0;
+  get energy(): number {
+    return this.power.ki;
+  }
 
   /** Vida, ki e forma (lógica pura, sem Phaser). */
   readonly power = new PowerState();
@@ -135,6 +146,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       make(`${id}:shot-small`, shot.texture, sm, SHOT_FPS, 0);
       make(`${id}:shot-big`, shot.texture, [hold.at(-1), sm[1], sm[2]], SHOT_FPS, 0);
     }
+    for (const id of FORM_IDS) make(`${id}:punch`, `goku_punch_${id}`, [0, 1, 2, 3, 4, 5, 6, 7], 18, 0);
     for (const sheet of SPRITE_OVERRIDES) {
       for (const key of sheet.keys) {
         scene.anims.remove(key);
@@ -143,7 +155,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, private controls: Controls) {
     super(scene, x, y, FORM_SHEETS.normal.body.texture, FORM_SHEETS.normal.body.frames.idle[0]);
     scene.add.existing(this);
     this.setScale(SCALE);
@@ -154,25 +166,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setCollideWorldBounds(true);
     this.syncFrameAnchor();
 
-    const kb = scene.input.keyboard;
-    if (!kb) throw new Error('Keyboard input is unavailable');
-    const K = Phaser.Input.Keyboard.KeyCodes;
-    this.keys = {
-      left: kb.addKey(K.LEFT),
-      right: kb.addKey(K.RIGHT),
-      a: kb.addKey(K.A),
-      d: kb.addKey(K.D),
-      up: kb.addKey(K.UP),
-      w: kb.addKey(K.W),
-      space: kb.addKey(K.SPACE),
-      shift: kb.addKey(K.SHIFT),
-      c: kb.addKey(K.C),
-      q: kb.addKey(K.Q),
-      g: kb.addKey(K.G),
-      k: kb.addKey(K.K),
-      h: kb.addKey(K.H),
-    };
-
     // A bola sai da mão no frame FIRE_AT da animação de tiro.
     this.on(
       Phaser.Animations.Events.ANIMATION_UPDATE,
@@ -180,10 +173,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.shotState === 'releasing' && anim.key.includes(':shot-') && frame.textureFrame === this.fireFrame) {
           this.fireKiBall();
         }
+        if (this.punching && anim.key.endsWith(':punch') && frame.index === PUNCH_HIT_FRAME + 1) {
+          const reach = 95;
+          const rect = new Phaser.Geom.Rectangle(this.facing === 1 ? this.x : this.x - reach, this.y - 90, reach, 60);
+          this.emit('melee', rect, attackDamage(PUNCH_DAMAGE, this.visualForm), this.facing);
+        }
       },
     );
     this.on(Phaser.Animations.Events.ANIMATION_COMPLETE, (anim: Phaser.Animations.Animation) => {
       if (anim.key.endsWith(':shot-small') || anim.key.endsWith(':shot-big')) this.shotState = 'idle';
+      if (anim.key.endsWith(':punch')) this.punching = false;
       if (anim.key.endsWith(':charge-start')) this.chargeIntroDone = true;
       if (anim.key.endsWith(':transform')) this.finishTransform();
       if (anim.key.endsWith(':revert')) this.finishRevert();
@@ -206,6 +205,26 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
   private hint(text: string): void {
     this.emit('hint', text);
+  }
+
+  /** Levou um golpe: perde vida, é empurrado e fica atordoado um instante. */
+  takeHit(dmg: number, dir: number): boolean {
+    const ko = this.power.damage(dmg);
+    this.stun = HITSTUN_MS;
+    this.setVelocity(dir * 260, -220);
+    this.setTintFill(0xffffff);
+    this.scene.time.delayedCall(80, () => this.clearTint());
+    if (this.shotState === 'charging') this.shotState = 'idle';
+    return ko;
+  }
+
+  /** Reinicia depois de nocaute / queda. */
+  respawn(x: number, y: number, hp: number): void {
+    this.setPosition(x, y);
+    this.setVelocity(0, 0);
+    this.power.hp = hp;
+    this.punching = false;
+    this.shotState = 'idle';
   }
 
   // ---------------------------------------------------------------- tiro (Q)
@@ -317,17 +336,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const body = this.body as Phaser.Physics.Arcade.Body;
     const onGround = body.blocked.down || body.touching.down;
 
-    const left = this.keys.left.isDown || this.keys.a.isDown;
-    const right = this.keys.right.isDown || this.keys.d.isDown;
+    const c = this.controls;
+    const left = c.down('left');
+    const right = c.down('right');
     const dir = (Number(right) - Number(left)) as -1 | 0 | 1;
-    const running = this.keys.shift.isDown;
-    const wantsJump = this.keys.space.isDown || this.keys.up.isDown || this.keys.w.isDown;
-    const holdingC = this.keys.c.isDown;
-    const holdingQ = this.keys.q.isDown;
-    const pressedQ = Phaser.Input.Keyboard.JustDown(this.keys.q);
-    const pressedG = Phaser.Input.Keyboard.JustDown(this.keys.g);
-    const pressedK = Phaser.Input.Keyboard.JustDown(this.keys.k);
-    const pressedH = Phaser.Input.Keyboard.JustDown(this.keys.h);
+    const running = c.down('run');
+    const wantsJump = c.down('jump');
+    const holdingC = c.down('charge');
+    const holdingQ = c.down('shoot');
+    const pressedQ = c.pressed('shoot');
+    const pressedG = c.pressed('ssj');
+    const pressedK = c.pressed('kaioken');
+    const pressedH = c.pressed('restore');
+    const pressedE = c.pressed('punch');
 
     if (pressedH) this.power.restore(); // atalho de teste: vida e ki cheios
     if (!holdingC) this.chargeIntroDone = false; // soltou o C: próxima vez toca a intro de novo
@@ -335,6 +356,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (onGround && !this.wasOnGround) this.landTimer = LAND_MS;
     this.wasOnGround = onGround;
     if (this.landTimer > 0) this.landTimer -= delta;
+
+    if (this.stun > 0) {
+      this.stun -= delta;
+      this.syncFrameAnchor();
+      return;
+    }
 
     // --- transformando / destransformando: só espera a animação acabar ---
     if (this.locked) {
@@ -353,6 +380,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
+    // --- E: soco ---
+    if (pressedE && !this.punching && this.shotState === 'idle') {
+      this.punching = true;
+      this.setFlipX(this.facing === -1);
+      this.anims.play(`${this.visualForm}:punch`);
+    }
+
     // --- Q: começa a carregar o tiro ---
     if (pressedQ && onGround && this.shotState === 'idle' && !holdingC) {
       if (this.power.ki >= KI_SHOT_COST) this.startShot();
@@ -360,7 +394,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     // --- recarregar ki com C (também dentro das formas) ---
-    const chargingKi = holdingC && onGround && this.shotState === 'idle';
+    const chargingKi = holdingC && onGround && this.shotState === 'idle' && !this.punching;
     if (chargingKi) this.power.charge(delta);
 
     // --- segurando Q: gasta mais ki; soltou (ou acabou o ki): lança ---
@@ -381,7 +415,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const form = this.visualForm;
     const k = (name: string) => `${form}:${name}`;
 
-    if (this.shotState !== 'idle') {
+    if (this.punching) {
+      if (onGround) this.setVelocityX(0);
+    } else if (this.shotState !== 'idle') {
       // --- atirando: parado, virado para onde olhava ---
       this.setVelocityX(0);
     } else if (chargingKi) {

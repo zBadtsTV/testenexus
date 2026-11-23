@@ -26,8 +26,21 @@ export function shotSize(spent: number): number {
   return SHOT_BIG_SIZE[0] + (SHOT_BIG_SIZE[1] - SHOT_BIG_SIZE[0]) * t;
 }
 
-export const KAIOKEN_HP_DRAIN_PER_SEC = 1.5; // % da vida por segundo enquanto o Kaioken está ativo
+export const KAIOKEN_HP_DRAIN_PER_SEC = 0.5; // % da vida por segundo enquanto o Kaioken está ativo
 export const SSJ_KI_DRAIN_PER_SEC = 4; // % de ki por segundo enquanto Super Sayajin está ativo
+
+// --- combate ---
+export const PUNCH_DAMAGE = 6;
+export const KI_BALL_DAMAGE = 5; // x tamanho da bola
+export const RASENGAN_DAMAGE = 22;
+export const RASENGAN_COST = 30; // chakra
+export const RESPAWN_FALL_DAMAGE = 20;
+export const FORM_DAMAGE_MULT: Record<FormId, number> = { normal: 1, kaioken: 1.5, ssj: 1.8 };
+
+/** Dano final de um golpe, já com o bônus da forma. */
+export function attackDamage(base: number, form: FormId): number {
+  return Math.round(base * FORM_DAMAGE_MULT[form]);
+}
 
 export const FORM_LABEL: Record<FormId, string> = {
   normal: 'Normal',
@@ -81,6 +94,12 @@ export class PowerState {
     const spent = Math.min(this.ki, amount);
     this.ki -= spent;
     return spent;
+  }
+
+  /** Recebe dano; devolve true se a vida zerou (nocaute). */
+  damage(amount: number): boolean {
+    this.hp = Math.max(0, this.hp - amount);
+    return this.hp <= 0;
   }
 
   restore(): void {
